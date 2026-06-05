@@ -23,6 +23,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', claude_bin: CLAUDE_BIN });
 });
 
+app.get('/debug', (req, res) => {
+  try {
+    const result = execSync('find /usr/local -name "claude*" 2>/dev/null', { encoding: 'utf8' });
+    res.json({ files: result.trim().split('\n') });
+  } catch(e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.post('/execute', async (req, res) => {
   const { issue_id, title, description, agent, repo, project_context } = req.body;
 
