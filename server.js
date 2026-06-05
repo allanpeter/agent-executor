@@ -10,23 +10,16 @@ app.use(express.json());
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
-const CLAUDE_BIN = 'npx claude';
-
-try {
-  CLAUDE_BIN = execSync('which claude', { encoding: 'utf8' }).trim();
-} catch {
-  CLAUDE_BIN = '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.js';
-}
-console.log(`Claude bin: ${CLAUDE_BIN}`);
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', claude_bin: CLAUDE_BIN });
+  res.json({ status: 'ok' });
 });
 
 app.get('/debug', (req, res) => {
   try {
-    const result = execSync('find /usr/local -name "claude*" 2>/dev/null', { encoding: 'utf8' });
-    res.json({ files: result.trim().split('\n') });
+    const files = execSync('find /usr/local -name "claude*" 2>/dev/null && which npx', { encoding: 'utf8' });
+    const npxTest = execSync('npx --version', { encoding: 'utf8' }).trim();
+    res.json({ files: files.trim().split('\n'), npx_version: npxTest });
   } catch(e) {
     res.json({ error: e.message });
   }
@@ -49,16 +42,15 @@ app.post('/execute', async (req, res) => {
 
     console.log(`[${issue_id}] Cloning ${repo}...`);
     execSync(`git clone ${repoUrl} ${workdir}`, { stdio: 'pipe' });
-
     execSync(`git -C ${workdir} checkout -b ${branch}`, { stdio: 'pipe' });
     execSync(`git -C ${workdir} config user.email "agent@innatech.com.br"`, { stdio: 'pipe' });
     execSync(`git -C ${workdir} config user.name "Innatech Agent"`, { stdio: 'pipe' });
 
     const prompt = `Voce e um agente de desenvolvimento. Sua tarefa e implementar a seguinte issue:\n\n## Contexto do Projeto\n${project_context || 'Sem contexto.'}\n\n## Issue\nID: ${issue_id}\nAgente: ${agent}\nTitulo: ${title}\nDescricao: ${description || 'Sem descricao.'}\n\n## Instrucoes\n1. Analise o codigo existente antes de fazer qualquer alteracao\n2. Implemente seguindo as convencoes do projeto\n3. Commits no formato Conventional Commits\n4. Nao quebre funcionalidades existentes\n5. Se houver ambiguidade, implemente a opcao mais conservadora`;
 
-    console.log(`[${issue_id}] Running Claude Code...`);
+    console.log(`[${issue_id}] Running Claude Code via npx...`);
     const { stdout } = await execAsync(
-      `cd ${workdir} && ${CLAUDE_BIN} -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
+      `cd ${workdir} && npx claude -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
       { env: { ...process.env, ANTHROPIC_API_KEY }, timeout: 300000 }
     );
 
