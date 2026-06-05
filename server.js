@@ -27,6 +27,20 @@ app.get('/debug', (req, res) => {
   }
 });
 
+
+app.get('/install-check', (req, res) => {
+  try {
+    const dirs = execSync('ls /app/node_modules/ 2>/dev/null', { encoding: 'utf8' });
+    const anthropic = execSync('ls /app/node_modules/@anthropic-ai/ 2>/dev/null || echo "NAO_EXISTE"', { encoding: 'utf8' });
+    res.json({ 
+      node_modules: dirs.trim().split('\n'),
+      anthropic_ai: anthropic.trim()
+    });
+  } catch(e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.post('/execute', async (req, res) => {
   const { issue_id, title, description, agent, repo, project_context } = req.body;
 
