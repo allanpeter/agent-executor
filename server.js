@@ -19,8 +19,9 @@ app.get('/health', (req, res) => {
 
 app.get('/debug', (req, res) => {
   try {
+    const whoami = execSync('whoami', { encoding: 'utf8' }).trim();
     const files = execSync('ls /app/node_modules/@anthropic-ai/claude-code/', { encoding: 'utf8' });
-    res.json({ files: files.trim().split('\n') });
+    res.json({ whoami, files: files.trim().split('\n') });
   } catch(e) {
     res.json({ error: e.message });
   }
