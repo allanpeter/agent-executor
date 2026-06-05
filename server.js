@@ -10,7 +10,7 @@ app.use(express.json());
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
-const CLAUDE_BIN = '/app/node_modules/@anthropic-ai/claude-code/cli.js';
+const CLAUDE_BIN = '/app/node_modules/@anthropic-ai/claude-code/cli-wrapper.cjs';
 console.log(`Claude bin: ${CLAUDE_BIN}`);
 
 app.get('/health', (req, res) => {
