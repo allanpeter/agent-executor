@@ -6,8 +6,10 @@ RUN apt-get update && apt-get install -y \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code
-ENV PATH="/usr/local/lib/node_modules/.bin:$PATH"
+# Instala Claude Code e verifica
+RUN npm install -g @anthropic-ai/claude-code && \
+    npm list -g @anthropic-ai/claude-code && \
+    npx claude --version
 
 WORKDIR /app
 COPY package.json .

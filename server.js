@@ -10,8 +10,8 @@ app.use(express.json());
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
+const CLAUDE_BIN = 'npx claude';
 
-let CLAUDE_BIN;
 try {
   CLAUDE_BIN = execSync('which claude', { encoding: 'utf8' }).trim();
 } catch {
@@ -58,7 +58,7 @@ app.post('/execute', async (req, res) => {
 
     console.log(`[${issue_id}] Running Claude Code...`);
     const { stdout } = await execAsync(
-      `cd ${workdir} && node ${CLAUDE_BIN} -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
+      `cd ${workdir} && ${CLAUDE_BIN} -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
       { env: { ...process.env, ANTHROPIC_API_KEY }, timeout: 300000 }
     );
 
