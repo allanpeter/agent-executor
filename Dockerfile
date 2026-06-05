@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 COPY package.json .
-RUN npm install
+RUN npm install --production=false
+RUN ls -la node_modules/@anthropic-ai/ || echo "ANTHROPIC NOT INSTALLED"
 COPY server.js .
 
 EXPOSE 3000
