@@ -10,21 +10,20 @@ app.use(express.json());
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
-const NPM_GLOBAL = execSync('npm root -g', { encoding: 'utf8' }).trim();
-const CLAUDE_BIN = `${NPM_GLOBAL}/@anthropic-ai/claude-code/cli.js`;
+const CLAUDE_BIN = '/app/node_modules/@anthropic-ai/claude-code/cli.js';
 console.log(`Claude bin: ${CLAUDE_BIN}`);
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', claude_bin: CLAUDE_BIN });
+  res.json({ status: 'ok', claude_bin: CLAUDE_BIN, exists: existsSync(CLAUDE_BIN) });
 });
 
 app.get('/debug', (req, res) => {
   try {
-    const files = execSync(`find ${NPM_GLOBAL}/@anthropic-ai -type f -name "*.js" | head -20 2>/dev/null`, { encoding: 'utf8' });
     const exists = existsSync(CLAUDE_BIN);
-    res.json({ npm_root: NPM_GLOBAL, claude_bin: CLAUDE_BIN, claude_bin_exists: exists, files: files.trim().split('\n') });
+    const files = execSync(`find /app/node_modules/@anthropic-ai -type f -name "cli.js" 2>/dev/null`, { encoding: 'utf8' });
+    res.json({ claude_bin: CLAUDE_BIN, claude_bin_exists: exists, files: files.trim().split('\n') });
   } catch(e) {
-    res.json({ error: e.message, npm_root: NPM_GLOBAL });
+    res.json({ error: e.message });
   }
 });
 
