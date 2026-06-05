@@ -10,18 +10,21 @@ app.use(express.json());
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
+const NPM_GLOBAL = execSync('npm root -g', { encoding: 'utf8' }).trim();
+const CLAUDE_BIN = `${NPM_GLOBAL}/@anthropic-ai/claude-code/cli.js`;
+console.log(`Claude bin: ${CLAUDE_BIN}`);
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', claude_bin: CLAUDE_BIN });
 });
 
 app.get('/debug', (req, res) => {
   try {
-    const files = execSync('find /usr/local -name "claude*" 2>/dev/null && which npx', { encoding: 'utf8' });
-    const npxTest = execSync('npx --version', { encoding: 'utf8' }).trim();
-    res.json({ files: files.trim().split('\n'), npx_version: npxTest });
+    const files = execSync(`find ${NPM_GLOBAL}/@anthropic-ai -type f -name "*.js" | head -20 2>/dev/null`, { encoding: 'utf8' });
+    const exists = existsSync(CLAUDE_BIN);
+    res.json({ npm_root: NPM_GLOBAL, claude_bin: CLAUDE_BIN, claude_bin_exists: exists, files: files.trim().split('\n') });
   } catch(e) {
-    res.json({ error: e.message });
+    res.json({ error: e.message, npm_root: NPM_GLOBAL });
   }
 });
 
@@ -48,9 +51,9 @@ app.post('/execute', async (req, res) => {
 
     const prompt = `Voce e um agente de desenvolvimento. Sua tarefa e implementar a seguinte issue:\n\n## Contexto do Projeto\n${project_context || 'Sem contexto.'}\n\n## Issue\nID: ${issue_id}\nAgente: ${agent}\nTitulo: ${title}\nDescricao: ${description || 'Sem descricao.'}\n\n## Instrucoes\n1. Analise o codigo existente antes de fazer qualquer alteracao\n2. Implemente seguindo as convencoes do projeto\n3. Commits no formato Conventional Commits\n4. Nao quebre funcionalidades existentes\n5. Se houver ambiguidade, implemente a opcao mais conservadora`;
 
-    console.log(`[${issue_id}] Running Claude Code via npx...`);
+    console.log(`[${issue_id}] Running Claude Code...`);
     const { stdout } = await execAsync(
-      `cd ${workdir} && npx claude -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
+      `cd ${workdir} && node ${CLAUDE_BIN} -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
       { env: { ...process.env, ANTHROPIC_API_KEY }, timeout: 300000 }
     );
 
