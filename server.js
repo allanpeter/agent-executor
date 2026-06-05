@@ -19,9 +19,8 @@ app.get('/health', (req, res) => {
 
 app.get('/debug', (req, res) => {
   try {
-    const exists = existsSync(CLAUDE_BIN);
-    const files = execSync(`find /app/node_modules/@anthropic-ai -type f -name "cli.js" 2>/dev/null`, { encoding: 'utf8' });
-    res.json({ claude_bin: CLAUDE_BIN, claude_bin_exists: exists, files: files.trim().split('\n') });
+    const files = execSync('ls /app/node_modules/@anthropic-ai/claude-code/', { encoding: 'utf8' });
+    res.json({ files: files.trim().split('\n') });
   } catch(e) {
     res.json({ error: e.message });
   }
