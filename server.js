@@ -2,7 +2,6 @@ import express from 'express';
 import { execSync, exec } from 'child_process';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { promisify } from 'util';
-import path from 'path';
 
 const execAsync = promisify(exec);
 const app = express();
@@ -12,8 +11,16 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const PORT = process.env.PORT || 3000;
 
+let CLAUDE_BIN;
+try {
+  CLAUDE_BIN = execSync('which claude', { encoding: 'utf8' }).trim();
+} catch {
+  CLAUDE_BIN = '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.js';
+}
+console.log(`Claude bin: ${CLAUDE_BIN}`);
+
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', claude_bin: CLAUDE_BIN });
 });
 
 app.post('/execute', async (req, res) => {
@@ -28,80 +35,38 @@ app.post('/execute', async (req, res) => {
   const repoUrl = `https://${GITHUB_TOKEN}@github.com/${repo}.git`;
 
   try {
-    // Limpa workdir se existir
     if (existsSync(workdir)) rmSync(workdir, { recursive: true });
     mkdirSync(workdir, { recursive: true });
 
     console.log(`[${issue_id}] Cloning ${repo}...`);
     execSync(`git clone ${repoUrl} ${workdir}`, { stdio: 'pipe' });
 
-    console.log(`[${issue_id}] Checking out branch ${branch}...`);
     execSync(`git -C ${workdir} checkout -b ${branch}`, { stdio: 'pipe' });
-
-    // Configura git
     execSync(`git -C ${workdir} config user.email "agent@innatech.com.br"`, { stdio: 'pipe' });
     execSync(`git -C ${workdir} config user.name "Innatech Agent"`, { stdio: 'pipe' });
 
-    const prompt = `
-Você é um agente de desenvolvimento. Sua tarefa é implementar a seguinte issue:
-
-## Contexto do Projeto
-${project_context || 'Sem contexto adicional.'}
-
-## Issue
-**ID:** ${issue_id}
-**Agente:** ${agent}
-**Título:** ${title}
-**Descrição:** ${description || 'Sem descrição.'}
-
-## Instruções
-1. Analise o código existente antes de fazer qualquer alteração
-2. Implemente a solução seguindo as convenções do projeto
-3. Faça commits atômicos com mensagens no formato Conventional Commits
-4. Não quebre funcionalidades existentes
-5. Se encontrar ambiguidade, implemente a interpretação mais conservadora
-`;
+    const prompt = `Voce e um agente de desenvolvimento. Sua tarefa e implementar a seguinte issue:\n\n## Contexto do Projeto\n${project_context || 'Sem contexto.'}\n\n## Issue\nID: ${issue_id}\nAgente: ${agent}\nTitulo: ${title}\nDescricao: ${description || 'Sem descricao.'}\n\n## Instrucoes\n1. Analise o codigo existente antes de fazer qualquer alteracao\n2. Implemente seguindo as convencoes do projeto\n3. Commits no formato Conventional Commits\n4. Nao quebre funcionalidades existentes\n5. Se houver ambiguidade, implemente a opcao mais conservadora`;
 
     console.log(`[${issue_id}] Running Claude Code...`);
-    const { stdout, stderr } = await execAsync(
-      `cd ${workdir} && claude -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
-      {
-        env: { ...process.env, ANTHROPIC_API_KEY },
-        timeout: 300000 // 5 minutos
-      }
+    const { stdout } = await execAsync(
+      `cd ${workdir} && node ${CLAUDE_BIN} -p ${JSON.stringify(prompt)} --allowedTools "Read,Edit,Bash,Write" --dangerously-skip-permissions --output-format json`,
+      { env: { ...process.env, ANTHROPIC_API_KEY }, timeout: 300000 }
     );
 
     let claudeResult;
-    try {
-      claudeResult = JSON.parse(stdout);
-    } catch {
-      claudeResult = { result: stdout };
-    }
+    try { claudeResult = JSON.parse(stdout); }
+    catch { claudeResult = { result: stdout }; }
 
-    if (claudeResult.is_error) {
-      throw new Error(`Claude Code error: ${claudeResult.result}`);
-    }
+    if (claudeResult.is_error) throw new Error(`Claude Code error: ${claudeResult.result}`);
 
-    // Verifica se houve mudanças
     const status = execSync(`git -C ${workdir} status --porcelain`, { encoding: 'utf8' });
     if (!status.trim()) {
-      return res.json({ status: 'no_changes', message: 'Claude did not make any changes', branch });
+      return res.json({ status: 'no_changes', branch });
     }
 
-    // Commit e push
-    console.log(`[${issue_id}] Committing and pushing...`);
     execSync(`git -C ${workdir} add -A`, { stdio: 'pipe' });
     execSync(`git -C ${workdir} commit -m "feat: ${title} [${issue_id}]"`, { stdio: 'pipe' });
     execSync(`git -C ${workdir} push origin ${branch}`, { stdio: 'pipe' });
-
-    // Abre PR via GitHub API
-    console.log(`[${issue_id}] Opening PR...`);
-    const prBody = {
-      title: `[${issue_id}] ${title}`,
-      body: `## Issue\n${description || ''}\n\n## Implementado por\n${agent} via Innatech Agent\n\n## Resultado\n${claudeResult.result || ''}`,
-      head: branch,
-      base: 'main'
-    };
 
     const prResponse = await fetch(`https://api.github.com/repos/${repo}/pulls`, {
       method: 'POST',
@@ -110,19 +75,20 @@ ${project_context || 'Sem contexto adicional.'}
         'Content-Type': 'application/json',
         'Accept': 'application/vnd.github.v3+json'
       },
-      body: JSON.stringify(prBody)
+      body: JSON.stringify({
+        title: `[${issue_id}] ${title}`,
+        body: `## Issue\n${description || ''}\n\n## Implementado por\n${agent} via Innatech Agent\n\n## Resultado\n${claudeResult.result || ''}`,
+        head: branch,
+        base: 'main'
+      })
     });
 
     const pr = await prResponse.json();
+    if (!prResponse.ok) throw new Error(`GitHub API error: ${pr.message}`);
 
-    if (!prResponse.ok) {
-      throw new Error(`GitHub API error: ${pr.message}`);
-    }
-
-    // Limpa workdir
     rmSync(workdir, { recursive: true });
-
     console.log(`[${issue_id}] Done. PR: ${pr.html_url}`);
+
     res.json({
       status: 'success',
       pr_url: pr.html_url,
@@ -138,6 +104,4 @@ ${project_context || 'Sem contexto adicional.'}
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Agent Executor running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Agent Executor running on port ${PORT}`));
